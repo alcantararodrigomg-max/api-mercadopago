@@ -1,6 +1,17 @@
 import fetch from "node-fetch";
 
 export default async function handler(req, res) {
+  // 🔐 Permitir acesso de qualquer origem (CORS)
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  // ✅ Responder requisições OPTIONS (pré-flight)
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
+  // ❌ Bloqueia métodos diferentes de POST
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Método não permitido" });
   }
@@ -15,10 +26,11 @@ export default async function handler(req, res) {
   };
 
   try {
+    // ⚙️ Chamada à API do Mercado Pago
     const response = await fetch("https://api.mercadopago.com/v1/payments", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${process.env.MP_ACCESS_TOKEN}`,
+        "Authorization": `Bearer ${process.env.MP_ACCESS_TOKEN}`, // use sua variável no painel da Vercel
         "Content-Type": "application/json"
       },
       body: JSON.stringify(body)
@@ -26,15 +38,21 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
-    if (data.error) {
-      return res.status(400).json(data);
+    // 🧩 Verificação de erro
+    if (data.error || !data.point_of_interaction) {
+      console.error("Erro Mercado Pago:", data);
+      return res.status(400).json({ error: "Erro ao gerar Pix", details: data });
     }
 
+    // ✅ Retorna QR Code e código copia e cola
     return res.status(200).json({
       qr: data.point_of_interaction.transaction_data.qr_code_base64,
       copiaecola: data.point_of_interaction.transaction_data.qr_code
     });
+
   } catch (err) {
-    return res.status(500).json({ error: "Erro ao gerar Pix", details: err.message });
+    console.error("Erro inesperado:", err);
+    return res.status(500).json({ error: "Erro interno no servidor", details: err.message });
   }
 }
+
